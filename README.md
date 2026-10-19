@@ -1,2 +1,3 @@
-# tamu-26-27-ecen-215-lab-kit
+# ECEN 215 Lab Kit
 Project repository for the 2026-2027 Texas A&amp;M ECEN Capstone Project ECEN 215 Lab Kit
+The objective of this capstone project is to design and develop a **low-cost, portable ECEN 215 Laboratory Instrumentation Kit** that can provide the measurement, signal-generation, and power-supply capabilities necessary to complete the ECEN 215 laboratory exercises, with the exception of Lab #9. The current laboratory sequence covers topics ranging from Ohm’s and Kirchhoff’s laws through operational amplifiers, RC/RL transient response, AC signals, frequency response, active filters, and digital logic. The goal is not to reproduce a full-featured commercial laboratory instrument, but instead to develop a compact device specifically optimized for the measurements and experiments required by ECEN 215.
