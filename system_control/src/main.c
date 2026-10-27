@@ -3,6 +3,8 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/drivers/adc.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +12,8 @@
 
 #define GPIO_NODE DT_NODELABEL(gpio0)
 #define UART_NODE DT_CHOSEN(zephyr_console)
+#define ADC_NODE DT_NODELABEL(adc)
+#define ADC_RESOLUTION 12
 
 #define NUM_SWITCHES 4
 #define CMD_BUFFER_SIZE 64
@@ -33,6 +37,10 @@ static uint8_t switch_states[NUM_SWITCHES] = {0};
 // command buffer
 static char cmd_buffer[CMD_BUFFER_SIZE];
 
+// ADC sample buffer
+static const struct device *adc_dev = DEVICE_DT_GET(ADC_NODE);
+
+static int16_t sample_buffer[2]; // can increase # of channels here
 
 // print command menu
 void print_menu(void)
@@ -214,6 +222,53 @@ int main(void)
         printk("ERROR: UART device not ready!\n");
         return 0;
     }
+
+    // check if ADC device is ready
+    if (!device_is_ready(adc_dev)) {
+        printk("ADC device not ready!\n");
+        return 0;
+    }
+
+    // configure ADC channel 0 (AIN0 / P0.02)
+    struct adc_channel_cfg channel0_cfg = {
+        .gain = ADC_GAIN_1_6,
+        .reference = ADC_REF_INTERNAL,
+        .acquisition_time = ADC_ACQ_TIME_DEFAULT,
+        .channel_id = 0,
+        .input_positive = NRF_SAADC_AIN0,
+    };
+
+    // configure ADC channel 1 (AIN1 / P0.03)
+    struct adc_channel_cfg channel1_cfg = {
+        .gain = ADC_GAIN_1_6,
+        .reference = ADC_REF_INTERNAL,
+        .acquisition_time = ADC_ACQ_TIME_DEFAULT,
+        .channel_id = 1,
+        .input_positive = NRF_SAADC_AIN1,
+    };
+
+    // error handling for channel setup
+    ret = adc_channel_setup(adc_dev, &channel0_cfg);
+
+    if (ret != 0) {
+        printk("Channel 0 setup failed: %d\n", ret);
+        return 0;
+    }
+
+    ret = adc_channel_setup(adc_dev, &channel1_cfg);
+
+    if (ret != 0) {
+        printk("Channel 1 setup failed: %d\n", ret);
+        return 0;
+    }
+
+    // configure ADC sampling sequence
+    struct adc_sequence sequence = {
+        .channels = BIT(0) | BIT(1), // channel mask tells driver to sample both channels
+        .buffer = sample_buffer,
+        .buffer_size = sizeof(sample_buffer),
+        .resolution = ADC_RESOLUTION,
+    };
 
     // configure GPIO outputs
     for (int i = 0; i < NUM_SWITCHES; i++) {
