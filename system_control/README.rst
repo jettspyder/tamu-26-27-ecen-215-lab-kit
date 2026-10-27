@@ -16,3 +16,5 @@ Directory Structure
 Use
 ********
 With board connected over USB, open the serial terminal associated with the development kit. Ex: Linux (Bash): $ screen /dev/ttyACM0 115200
+
+The command list should print to the console. 
