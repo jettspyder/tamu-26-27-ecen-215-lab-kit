@@ -12,3 +12,7 @@ Directory Structure
 - README.rst: This document. User technical documentation. 
 - prj.conf: Basic configuration for activating peripheral and output devices, etc. 
 - app.overlay: Advanced configuration for IO. 
+
+Use
+********
+With board connected over USB, open the serial terminal associated with the development kit. Ex: Linux (Bash): $ screen /dev/ttyACM0 115200
