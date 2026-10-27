@@ -1,12 +1,13 @@
 import collections
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
+import numpy as np
 import serial
 
 # serial port configuration
 SERIAL_PORT = "/dev/ttyACM0" # exact path may vary
 BAUD_RATE = 115200 # symbols/s
-DATA_POINTS = 100 # number of data points to display
+DATA_POINTS = 200 # number of data points to display
 
 # open serial connection
 ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
@@ -21,10 +22,10 @@ fig, ax = plt.subplots()
 )  # line object to update dynamically
 
 # configure plot aesthetics
-ax.set_title("Real-Time Serial Data Plot")
+ax.set_title("Real-Input")
 ax.set_xlabel("Samples")
-ax.set_ylabel("Value")
-ax.set_ylim(0, 1023)  # adjust this to match your sensor range (e.g., 0-5V, 0-1023)
+ax.set_ylabel("Voltage (mV)")
+ax.set_ylim(0, 5000)  # adjust this to match your sensor range (e.g., 0-5V, 0-1023)
 ax.grid(True)
 
 
@@ -43,6 +44,14 @@ def update_plot(frame):
 
                 # update the y-data of the plot line
                 line.set_ydata(data_buffer)
+        if (frame % 50 == 0):
+            print("--- Measurements---")
+            print(f"Mean: {np.mean(data_buffer):.1f} mV")
+            print(f"RMS: {np.sqrt(np.mean(np.square(data_buffer))):.1f} mV")
+            print(f"Max: {np.max(data_buffer):.1f} mV")
+            print(f"Min: {np.min(data_buffer):.1f} mV")
+            print(f"Amplitude: {np.max(data_buffer) - np.min(data_buffer):.1f} mV")
+            print("\n\n\n\n\n")
 
     except Exception as e:
         print(f"Error reading serial data: {e}")
