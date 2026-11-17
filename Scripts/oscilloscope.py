@@ -31,6 +31,130 @@ ser = serial.Serial(PORT, BAUD, timeout=0.2)
 csv_file = None
 csv_writer = None
 
+def rising_crossings(t, v, level):
+    """
+    Find rising-edge crossing times using linear interpolation.
+    """
+    crossings = []
+
+    for i in range(len(v) - 1):
+        if v[i] < level <= v[i + 1]:
+
+            dv = v[i + 1] - v[i]
+
+            if dv == 0:
+                continue
+
+            fraction = (level - v[i]) / dv
+
+            crossing_time = (
+                t[i] + fraction * (t[i + 1] - t[i])
+            )
+
+            crossings.append(crossing_time)
+
+    return np.array(crossings)
+
+
+def calculate_measurements(t, v):
+    """
+    Calculate waveform measurements for one channel.
+
+    Returns:
+        Average voltage
+        Peak-to-peak voltage
+        Peak amplitude
+        Frequency
+    """
+
+    if len(v) < 10:
+        return None
+
+    # Average voltage
+    v_avg = np.mean(v)
+
+    # Peak-to-peak voltage
+    v_pp = np.max(v) - np.min(v)
+
+    # Peak amplitude
+    v_peak = v_pp / 2.0
+
+    # Detect rising crossings at the average voltage
+    crossings = rising_crossings(t, v, v_avg)
+
+    frequency = None
+
+    if len(crossings) >= 2:
+
+        periods = np.diff(crossings)
+
+        # Remove invalid periods
+        periods = periods[periods > 0]
+
+        if len(periods) > 0:
+            frequency = 1.0 / np.mean(periods)
+
+    return {
+        "avg": v_avg,
+        "vpp": v_pp,
+        "peak": v_peak,
+        "freq": frequency
+    }
+
+
+def calculate_phase(t, v0, v1, f0, f1):
+    """
+    Calculate CH2 phase relative to CH1.
+
+    Positive phase means CH2 leads CH1.
+    Negative phase means CH2 lags CH1.
+    """
+
+    if f0 is None or f1 is None:
+        return None
+
+    # Require approximately equal frequencies
+    if abs(f0 - f1) / max(f0, f1) > 0.05:
+        return None
+
+    frequency = (f0 + f1) / 2.0
+    period = 1.0 / frequency
+
+    crossings0 = rising_crossings(
+        t, v0, np.mean(v0)
+    )
+
+    crossings1 = rising_crossings(
+        t, v1, np.mean(v1)
+    )
+
+    if len(crossings0) == 0 or len(crossings1) == 0:
+        return None
+
+    # Compare CH2 crossings to the nearest CH1 crossings
+    phase_values = []
+
+    for t1 in crossings1:
+
+        differences = crossings0 - t1
+
+        # Wrap differences to +/- half a period
+        differences = (
+            differences + period / 2
+        ) % period - period / 2
+
+        nearest_difference = differences[
+            np.argmin(np.abs(differences))
+        ]
+
+        phase = 360.0 * nearest_difference / period
+
+        phase_values.append(phase)
+
+    if not phase_values:
+        return None
+
+    return np.mean(phase_values)
 
 def read_serial():
     global running
@@ -69,8 +193,29 @@ def read_serial():
 thread = threading.Thread(target=read_serial, daemon=True)
 thread.start()
 
-fig, ax = plt.subplots(figsize=(11, 6))
-plt.subplots_adjust(bottom=0.32)
+fig, ax = plt.subplots(figsize=(12, 7))
+
+plt.subplots_adjust(
+    left=0.10,
+    right=0.73,
+    bottom=0.32,
+    top=0.92
+)
+
+# Measurement panel
+measurement_text = fig.text(
+    0.76,
+    0.85,
+    "",
+    fontsize=10,
+    family="monospace",
+    verticalalignment="top",
+    bbox=dict(
+        boxstyle="round",
+        facecolor="whitesmoke",
+        edgecolor="gray"
+    )
+)
 
 line0, = ax.plot([], [], label="CH1 - AIN0",
                  color="dodgerblue")
@@ -149,57 +294,130 @@ record_button.on_clicked(toggle_record)
 def update(frame):
     global recording
 
-    # Read queued samples even when display is paused
+    # Read queued samples
     count = 0
 
     while count < 2000:
         try:
             t, v0, v1 = samples.get_nowait()
+
         except queue.Empty:
             break
 
         count += 1
 
+        # Record data to CSV
         if recording and csv_writer:
             csv_writer.writerow([t, v0, v1])
 
+        # Update display buffers
         if not paused:
             times.append(t)
             ch0_data.append(v0)
             ch1_data.append(v1)
 
-    if not times:
-        return line0, line1
+    if len(times) < 10:
+        return line0, line1, measurement_text
 
     t = np.array(times)
     v0 = np.array(ch0_data)
     v1 = np.array(ch1_data)
 
+    # Time window
     window = time_slider.val
+
     end = t[-1]
     start = end - window
 
-    # Optional rising-edge software trigger
+    # Software trigger
     if trigger_check.get_status()[0]:
+
         level = trigger_slider.val
+
         crossings = np.where(
-            (v0[:-1] < level) & (v0[1:] >= level)
+            (v0[:-1] < level) &
+            (v0[1:] >= level)
         )[0]
 
-        if len(crossings):
+        if len(crossings) > 0:
+
             trigger_t = t[crossings[-1] + 1]
+
             start = trigger_t - 0.2 * window
             end = start + window
 
+    # Select visible samples
     mask = (t >= start) & (t <= end)
 
-    line0.set_data(t[mask], v0[mask])
-    line1.set_data(t[mask], v1[mask])
+    t_visible = t[mask]
+    v0_visible = v0[mask]
+    v1_visible = v1[mask]
+
+    # Update waveforms
+    line0.set_data(t_visible, v0_visible)
+    line1.set_data(t_visible, v1_visible)
 
     ax.set_xlim(start, end)
     ax.set_ylim(0, volt_slider.val)
 
-    return line0, line1
+    # Calculate measurements
+    m0 = calculate_measurements(t_visible, v0_visible)
+    m1 = calculate_measurements(t_visible, v1_visible)
+
+    if m0 is not None and m1 is not None:
+
+        phase = calculate_phase(
+            t_visible,
+            v0_visible,
+            v1_visible,
+            m0["freq"],
+            m1["freq"]
+        )
+
+        # Format frequency
+        f0_text = (
+            f"{m0['freq']:.2f} Hz"
+            if m0["freq"] is not None
+            else "---"
+        )
+
+        f1_text = (
+            f"{m1['freq']:.2f} Hz"
+            if m1["freq"] is not None
+            else "---"
+        )
+
+        # Format phase
+        phase_text = (
+            f"{phase:+.1f} deg"
+            if phase is not None
+            else "---"
+        )
+
+        # Measurement panel
+        text = (
+            "WAVEFORM MEASUREMENTS\n"
+            "----------------------\n\n"
+
+            "CHANNEL 1\n"
+            f"Average: {m0['avg']:.3f} V\n"
+            f"Vpp:     {m0['vpp']:.3f} V\n"
+            f"Peak:    {m0['peak']:.3f} V\n"
+            f"Freq:    {f0_text}\n\n"
+
+            "CHANNEL 2\n"
+            f"Average: {m1['avg']:.3f} V\n"
+            f"Vpp:     {m1['vpp']:.3f} V\n"
+            f"Peak:    {m1['peak']:.3f} V\n"
+            f"Freq:    {f1_text}\n\n"
+
+            "PHASE DIFFERENCE\n"
+            f"CH2 - CH1: {phase_text}\n"
+        )
+
+        measurement_text.set_text(text)
+
+    return line0, line1, measurement_text
 
 
 ani = FuncAnimation(
