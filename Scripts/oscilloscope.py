@@ -193,19 +193,19 @@ def read_serial():
 thread = threading.Thread(target=read_serial, daemon=True)
 thread.start()
 
-fig, ax = plt.subplots(figsize=(12, 7))
+fig, ax = plt.subplots(figsize=(15, 8))
 
 plt.subplots_adjust(
-    left=0.10,
-    right=0.73,
+    left=0.08,
+    right=0.72,
     bottom=0.32,
     top=0.92
 )
 
 # Measurement panel
 measurement_text = fig.text(
-    0.76,
-    0.85,
+    0.75,
+    0.88,
     "",
     fontsize=10,
     family="monospace",
@@ -230,30 +230,44 @@ ax.grid(True)
 ax.legend(loc="upper right")
 
 # Timebase slider
-time_ax = plt.axes((0.20, 0.20, 0.65, 0.03))
+time_ax = plt.axes(
+    (0.18, 0.22, 0.49, 0.03)
+)
 time_slider = Slider(
     time_ax, "Window (s)", 0.1, 10.0,
     valinit=2.0
 )
 
 # Vertical range slider
-volt_ax = plt.axes((0.20, 0.15, 0.65, 0.03))
+
+# Vertical range slider
+volt_ax = plt.axes(
+    (0.18, 0.17, 0.49, 0.03)
+)
 volt_slider = Slider(
     volt_ax, "Max V", 0.5, 3.6,
     valinit=3.3
 )
 
 # Trigger level
-trigger_ax = plt.axes((0.20, 0.10, 0.65, 0.03))
+trigger_ax = plt.axes(
+    (0.18, 0.12, 0.49, 0.03)
+)
 trigger_slider = Slider(
     trigger_ax, "Trigger V", 0.0, 3.3,
     valinit=1.5
 )
 
 # Buttons
-pause_ax = plt.axes((0.18, 0.025, 0.16, 0.05))
-record_ax = plt.axes((0.40, 0.025, 0.16, 0.05))
-trigger_check_ax = plt.axes((0.68, 0.015, 0.20, 0.065))
+pause_ax = plt.axes(
+    (0.08, 0.025, 0.15, 0.05)
+)
+record_ax = plt.axes(
+    (0.28, 0.025, 0.15, 0.05)
+)
+trigger_check_ax = plt.axes(
+    (0.48, 0.015, 0.20, 0.065)
+)
 
 pause_button = Button(pause_ax, "Pause")
 record_button = Button(record_ax, "Record")
@@ -290,6 +304,353 @@ def toggle_record(event):
 pause_button.on_clicked(toggle_pause)
 record_button.on_clicked(toggle_record)
 
+# Channel visibility controls
+channel_check_ax = plt.axes(
+    (0.75, 0.18, 0.20, 0.09)
+)
+
+channel_check = CheckButtons(
+    channel_check_ax,
+    ["CH1", "CH2"],
+    [True, True]
+)
+
+channel_check_ax.set_title("Channels", fontsize=10)
+
+
+# Cursor visibility controls
+cursor_check_ax = plt.axes(
+    (0.75, 0.04, 0.20, 0.09)
+)
+
+cursor_check = CheckButtons(
+    cursor_check_ax,
+    ["Time Cursors", "Voltage Cursors"],
+    [False, False]
+)
+
+cursor_check_ax.set_title("Cursors", fontsize=10)
+
+
+# Channel visibility callback
+def toggle_channel(label):
+
+    if label == "CH1":
+        line0.set_visible(not line0.get_visible())
+
+    elif label == "CH2":
+        line1.set_visible(not line1.get_visible())
+
+    fig.canvas.draw_idle()
+
+
+channel_check.on_clicked(toggle_channel)
+
+# ==================================================
+# Measurement cursors
+# ==================================================
+
+# Time cursor positions as fractions of the time window
+time_cursor_positions = [0.25, 0.75]
+
+# Voltage cursor positions in volts
+voltage_cursor_positions = [0.75, 1.25]
+
+# Currently selected cursor
+active_cursor = None
+
+
+# Vertical time cursors
+time_cursor1 = ax.axvline(
+    x=0,
+    color="limegreen",
+    linestyle="--",
+    linewidth=1.5,
+    visible=False
+)
+
+time_cursor2 = ax.axvline(
+    x=0,
+    color="limegreen",
+    linestyle=":",
+    linewidth=1.5,
+    visible=False
+)
+
+
+# Horizontal voltage cursors
+voltage_cursor1 = ax.axhline(
+    y=voltage_cursor_positions[0],
+    color="magenta",
+    linestyle="--",
+    linewidth=1.5,
+    visible=False
+)
+
+voltage_cursor2 = ax.axhline(
+    y=voltage_cursor_positions[1],
+    color="magenta",
+    linestyle=":",
+    linewidth=1.5,
+    visible=False
+)
+
+
+# Cursor measurement display
+cursor_text = fig.text(
+    0.75,
+    0.54,
+    "",
+    fontsize=10,
+    family="monospace",
+    verticalalignment="top",
+    bbox=dict(
+        boxstyle="round",
+        facecolor="whitesmoke",
+        edgecolor="gray"
+    )
+)
+
+cursor_text.set_visible(False)
+
+def update_cursors():
+
+    time_enabled, voltage_enabled = (
+        cursor_check.get_status()
+    )
+
+    # Current horizontal axis limits
+    xmin, xmax = ax.get_xlim()
+    window = xmax - xmin
+
+    # Calculate absolute time cursor positions
+    t1 = xmin + time_cursor_positions[0] * window
+    t2 = xmin + time_cursor_positions[1] * window
+
+    # Voltage cursor positions
+    v1 = voltage_cursor_positions[0]
+    v2 = voltage_cursor_positions[1]
+
+    # Update cursor positions
+    time_cursor1.set_xdata([t1, t1])
+    time_cursor2.set_xdata([t2, t2])
+
+    voltage_cursor1.set_ydata([v1, v1])
+    voltage_cursor2.set_ydata([v2, v2])
+
+    # Update cursor visibility
+    time_cursor1.set_visible(time_enabled)
+    time_cursor2.set_visible(time_enabled)
+
+    voltage_cursor1.set_visible(voltage_enabled)
+    voltage_cursor2.set_visible(voltage_enabled)
+
+    # Build cursor measurement panel
+    text = (
+        "CURSOR MEASUREMENTS\n"
+        "----------------------\n"
+    )
+
+    if time_enabled:
+
+        delta_t = abs(t2 - t1)
+
+        if delta_t > 1e-9:
+            frequency_text = f"{1.0 / delta_t:.3f} Hz"
+        else:
+            frequency_text = "---"
+
+        text += (
+            "\nTIME CURSORS\n"
+            f"T1:   {t1:.4f} s\n"
+            f"T2:   {t2:.4f} s\n"
+            f"dT:   {delta_t * 1000:.3f} ms\n"
+            f"1/dT: {frequency_text}\n"
+        )
+
+    if voltage_enabled:
+
+        delta_v = abs(v2 - v1)
+
+        text += (
+            "\nVOLTAGE CURSORS\n"
+            f"V1:   {v1:.3f} V\n"
+            f"V2:   {v2:.3f} V\n"
+            f"dV:   {delta_v:.3f} V\n"
+        )
+
+    cursor_text.set_text(text)
+
+    cursor_text.set_visible(
+        time_enabled or voltage_enabled
+    )
+
+def toggle_cursors(label):
+
+    global active_cursor
+
+    active_cursor = None
+
+    update_cursors()
+    fig.canvas.draw_idle()
+
+
+cursor_check.on_clicked(toggle_cursors)
+
+# ==================================================
+# Mouse interaction
+# ==================================================
+
+CURSOR_PICK_DISTANCE = 10  # pixels
+
+
+def on_mouse_press(event):
+
+    global active_cursor
+
+    if event.inaxes != ax:
+        return
+
+    if event.button != 1:
+        return
+
+    active_cursor = None
+
+    # Avoid interfering with toolbar pan/zoom
+    toolbar = getattr(fig.canvas, "toolbar", None)
+
+    if toolbar is not None and toolbar.mode:
+        return
+
+    time_enabled, voltage_enabled = (
+        cursor_check.get_status()
+    )
+
+    candidates = []
+
+    # Check vertical time cursors
+    if time_enabled:
+
+        time_lines = [
+            time_cursor1,
+            time_cursor2
+        ]
+
+        for i, cursor in enumerate(time_lines):
+
+            cursor_x = cursor.get_xdata()[0]
+
+            pixel_x = ax.transData.transform(
+                (cursor_x, 0)
+            )[0]
+
+            distance = abs(event.x - pixel_x)
+
+            candidates.append(
+                (distance, "time", i)
+            )
+
+    # Check horizontal voltage cursors
+    if voltage_enabled:
+
+        for i, voltage in enumerate(
+            voltage_cursor_positions
+        ):
+
+            pixel_y = ax.transData.transform(
+                (0, voltage)
+            )[1]
+
+            distance = abs(event.y - pixel_y)
+
+            candidates.append(
+                (distance, "voltage", i)
+            )
+
+    # Select the closest cursor
+    if candidates:
+
+        distance, cursor_type, index = min(
+            candidates,
+            key=lambda item: item[0]
+        )
+
+        if distance <= CURSOR_PICK_DISTANCE:
+
+            active_cursor = (
+                cursor_type,
+                index
+            )
+
+
+def on_mouse_move(event):
+
+    if active_cursor is None:
+        return
+
+    if event.inaxes != ax:
+        return
+
+    cursor_type, index = active_cursor
+
+    if cursor_type == "time":
+
+        if event.xdata is None:
+            return
+
+        xmin, xmax = ax.get_xlim()
+
+        if xmax <= xmin:
+            return
+
+        # Convert mouse position to window fraction
+        fraction = (
+            (event.xdata - xmin) /
+            (xmax - xmin)
+        )
+
+        time_cursor_positions[index] = float(
+            np.clip(fraction, 0.0, 1.0)
+        )
+
+    elif cursor_type == "voltage":
+
+        if event.ydata is None:
+            return
+
+        ymin, ymax = ax.get_ylim()
+
+        voltage_cursor_positions[index] = float(
+            np.clip(event.ydata, ymin, ymax)
+        )
+
+    update_cursors()
+
+    fig.canvas.draw_idle()
+
+
+def on_mouse_release(event):
+
+    global active_cursor
+
+    active_cursor = None
+
+
+# Register mouse events
+fig.canvas.mpl_connect(
+    "button_press_event",
+    on_mouse_press
+)
+
+fig.canvas.mpl_connect(
+    "motion_notify_event",
+    on_mouse_move
+)
+
+fig.canvas.mpl_connect(
+    "button_release_event",
+    on_mouse_release
+)
 
 def update(frame):
     global recording
@@ -317,7 +678,19 @@ def update(frame):
             ch1_data.append(v1)
 
     if len(times) < 10:
-        return line0, line1, measurement_text
+
+        update_cursors()
+
+        return (
+            line0,
+            line1,
+            measurement_text,
+            cursor_text,
+            time_cursor1,
+            time_cursor2,
+            voltage_cursor1,
+            voltage_cursor2
+        )
 
     t = np.array(times)
     v0 = np.array(ch0_data)
@@ -359,6 +732,7 @@ def update(frame):
 
     ax.set_xlim(start, end)
     ax.set_ylim(0, volt_slider.val)
+    update_cursors()
 
     # Calculate measurements
     m0 = calculate_measurements(t_visible, v0_visible)
@@ -417,7 +791,16 @@ def update(frame):
 
         measurement_text.set_text(text)
 
-    return line0, line1, measurement_text
+    return (
+        line0,
+        line1,
+        measurement_text,
+        cursor_text,
+        time_cursor1,
+        time_cursor2,
+        voltage_cursor1,
+        voltage_cursor2
+    )
 
 
 ani = FuncAnimation(
